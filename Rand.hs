@@ -23,14 +23,14 @@ createParameters feasible gen minB maxB =
 -- Case Feasible problem
 createBoundsF :: Int -> Integer -> Integer -> (Param, Bounds)
 createBoundsF gen minB maxB =
-  let [ma,mb,mc,md,mlx,mux,mly,muy,gen'] = take 9 $ randomRs (minB,maxB) (mkStdGen gen) :: [Integer] in
-  let [a,b,c,d,lx,ux,ly,uy] = zipWith (\x y -> x*y) (map fromInteger [ma,mb,mc,md,mlx,mux,mly,muy]) (take 8 $ randoms (mkStdGen gen) :: [Float]) in
-  let [lbx,ubx,lby,uby] = [(min ux lx), (max ux lx), (min uy ly), (max uy ly)] in
-  let [llx, uux, lly, uuy] = [(min (c*lbx) (c*ubx)), (max (c*lbx) (c*ubx)), (min (d*lby) (d*uby)),(max (d*lby) (d*uby))] in
-  let gen2 = mkStdGen (fromInteger gen' :: Int) in
-  let randlist = zipWith (*) (map fromInteger (randomRs (minB,maxB) gen2 :: [Integer])) (randoms gen2 :: [Float]) in
-  let (lbg,ubg) = genGBoundsF randlist llx uux lly uuy in
-        ((Param a b c d), (Bounds lbx ubx lby uby lbg ubg))
+  let [ma,mb,mc,md,mlx,mux,mly,muy,gen'] = take 9 $ randomRs (minB,maxB) (mkStdGen gen) :: [Integer]
+      [a,b,c,d,lx,ux,ly,uy] = zipWith (\x y -> x*y) (map fromInteger [ma,mb,mc,md,mlx,mux,mly,muy]) (take 8 $ randoms (mkStdGen gen) :: [Float])
+      [lbx,ubx,lby,uby] = [(min ux lx), (max ux lx), (min uy ly), (max uy ly)]
+      [llx, uux, lly, uuy] = [(min (c*lbx) (c*ubx)), (max (c*lbx) (c*ubx)), (min (d*lby) (d*uby)),(max (d*lby) (d*uby))]
+      gen2 = mkStdGen (fromInteger gen' :: Int)
+      randlist = zipWith (*) (map fromInteger (randomRs (minB,maxB) gen2 :: [Integer])) (randoms gen2 :: [Float])
+      (lbg,ubg) = genGBoundsF randlist llx uux lly uuy
+  in ((Param a b c d), (Bounds lbx ubx lby uby lbg ubg))
 
 
 genGBoundsF :: [Float] -> Float -> Float -> Float -> Float -> (Float,Float)
