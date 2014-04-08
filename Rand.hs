@@ -18,18 +18,27 @@ data Param = Param { a :: Float
 -- Function assembling all the others
 createParameters :: Bool -> Int -> Integer -> Integer -> (Param, Bounds)
 createParameters feasible gen minB maxB =
-  if feasible then createBoundsF gen minB maxB else createBoundsU gen minB maxB
+  if feasible
+  then createBoundsF gen minB maxB
+  else createBoundsU gen minB maxB
 
 -- Case Feasible problem
 createBoundsF :: Int -> Integer -> Integer -> (Param, Bounds)
 createBoundsF gen minB maxB = ((Param a b c d), (Bounds lbx ubx lby uby lbg ubg))
   where
     [ma,mb,mc,md,mlx,mux,mly,muy,gen'] = take 9 $ randomRs (minB,maxB) (mkStdGen gen) :: [Integer]
-    [a,b,c,d,lx,ux,ly,uy] = zipWith (\x y -> x*y) (map fromInteger [ma,mb,mc,md,mlx,mux,mly,muy]) (take 8 $ randoms (mkStdGen gen) :: [Float])
+    [a,b,c,d,lx,ux,ly,uy] = zipWith (\x y -> x*y)
+                            (map fromInteger [ma,mb,mc,md,mlx,mux,mly,muy])
+                            (take 8 $ randoms (mkStdGen gen) :: [Float])
     [lbx,ubx,lby,uby] = [(min ux lx), (max ux lx), (min uy ly), (max uy ly)]
-    [llx, uux, lly, uuy] = [(min (c*lbx) (c*ubx)), (max (c*lbx) (c*ubx)), (min (d*lby) (d*uby)),(max (d*lby) (d*uby))]
+    [llx, uux, lly, uuy] = [ (min (c*lbx) (c*ubx))
+                           , (max (c*lbx) (c*ubx))
+                           , (min (d*lby) (d*uby))
+                           ,(max (d*lby) (d*uby))
+                           ]
     gen2 = mkStdGen (fromInteger gen' :: Int)
-    randlist = zipWith (*) (map fromInteger (randomRs (minB,maxB) gen2 :: [Integer])) (randoms gen2 :: [Float])
+    randlist = zipWith (*) (map fromInteger (randomRs (minB,maxB) gen2 :: [Integer]))
+               (randoms gen2 :: [Float])
     (lbg,ubg) = genGBoundsF randlist llx uux lly uuy
 
 
@@ -50,12 +59,22 @@ isPossible llx uux lly uuy lg = (lg > llx + lly) && (lg < uux + uuy)
 -- Case Unfeasible problem
 createBoundsU :: Int -> Integer -> Integer -> (Param, Bounds)
 createBoundsU gen minB maxB =
-  if not $ testBounds lg ug lx ux ly uy then ((Param a b c d), (Bounds lx ux ly uy lg ug))
-  else if (uux+uuy < lg) || (llx +lly > ug) then ((Param a b c d), (Bounds lx ux ly uy lg ug))
+  if not $ testBounds lg ug lx ux ly uy
+  then ((Param a b c d), (Bounds lx ux ly uy lg ug))
+  else if (uux+uuy < lg) || (llx +lly > ug)
+       then ((Param a b c d), (Bounds lx ux ly uy lg ug))
        else  ((Param a b c d), (Bounds lx ux ly uy lbg ubg))
   where
-    ([a,b,c,d,ux,lx,uy,ly,ug,lg],rest) = splitAt 10 $ zipWith (*) (map fromInteger (randomRs (minB,maxB) (mkStdGen gen) :: [Integer])) (randoms (mkStdGen gen) :: [Float])
-    [llx, uux, lly, uuy] = [(min (c*lx) (c*ux)), (max (c*lx) (c*ux)), (min (d*ly) (d*uy)),(max (d*ly) (d*uy))]
+    ([a,b,c,d,ux,lx,uy,ly,ug,lg],rest) =
+      splitAt 10 $ zipWith (*)
+      (map fromInteger (randomRs (minB,maxB) (mkStdGen gen) :: [Integer]))
+      (randoms (mkStdGen gen) :: [Float])
+
+    [llx, uux, lly, uuy] = [ (min (c*lx) (c*ux))
+                           , (max (c*lx) (c*ux))
+                           , (min (d*ly) (d*uy))
+                           , (max (d*ly) (d*uy))
+                           ]
     (lbg,ubg) = genGBoundsU rest llx uux lly uuy
 
 testBounds :: Float -> Float -> Float -> Float -> Float -> Float -> Bool -- Step 1
@@ -65,12 +84,13 @@ testBounds lbg ubg lbx1 ubx1 lbx2 ubx2
   | lbx2 > ubx2 = False
   | otherwise = True
 
-
 genGBoundsU :: [Float] -> Float -> Float -> Float -> Float -> (Float,Float)
 genGBoundsU rlist llx uux lly uuy =
-  if lg > ug then (lg,ug) -- Step 1
-  else
-    if isNotPossible llx uux lly uuy lg ug then (lg,ug) else genGBoundsF rest llx uux lly uuy
+  if lg > ug
+  then (lg,ug) -- Step 1
+  else if isNotPossible llx uux lly uuy lg ug
+       then (lg,ug)
+       else genGBoundsF rest llx uux lly uuy
   where
     ([lg,ug], rest) = splitAt 2 rlist
 
