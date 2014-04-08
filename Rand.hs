@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wall #-}
 import System.Random
 
 -- Definition of new types for a better readability
