@@ -1,9 +1,19 @@
 import System.Random
 
 -- Definition of new types for a better readability
-data Bounds = Bounds {getlbx1 :: Float, getubx1 :: Float, getlbx2 :: Float, getubx2 :: Float, getlbg :: Float, getubg :: Float} deriving (Show, Eq, Ord)
+data Bounds = Bounds { getlbx1 :: Float
+                     , getubx1 :: Float
+                     , getlbx2 :: Float
+                     , getubx2 :: Float
+                     , getlbg :: Float
+                     , getubg :: Float
+                     } deriving (Show, Eq, Ord)
 
-data Param = Param { a :: Float, b :: Float, c :: Float, d :: Float} deriving (Show, Eq, Ord)
+data Param = Param { a :: Float
+                   , b :: Float
+                   , c :: Float
+                   , d :: Float
+                   } deriving (Show, Eq, Ord)
 
 -- Function assembling all the others
 createParameters :: Bool -> Int -> Integer -> Integer -> (Param, Bounds)
