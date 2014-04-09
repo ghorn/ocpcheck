@@ -27,10 +27,10 @@ createParameters feasible gen minB maxB =
 createBoundsF :: Int -> Integer -> Integer -> (Param, Bounds)
 createBoundsF gen minB maxB = ((Param a b c d), (Bounds lbx ubx lby uby lbg ubg))
   where
-    [ma,mb,mc,md,mlx,mux,mly,muy,gen'] = take 9 $ randomRs (minB,maxB) (mkStdGen gen) :: [Integer]
-    [a,b,c,d,lx,ux,ly,uy] = zipWith (\x y -> x*y)
-                            (map fromInteger [ma,mb,mc,md,mlx,mux,mly,muy])
-                            (take 8 $ randoms (mkStdGen gen) :: [Float])
+    [ma,mb,mc,md,mlx,mux,mly,muy,mug,gen'] = take 10 $ randomRs (minB,maxB) (mkStdGen gen) :: [Integer]
+    [a,b,c,d,lx,ux,ly,uy,ug] = zipWith (\x y -> x*y)
+                            (map fromInteger [ma,mb,mc,md,mlx,mux,mly,muy,mug])
+                            (take 9 $ randoms (mkStdGen gen) :: [Float])
     [lbx,ubx,lby,uby] = [(min ux lx), (max ux lx), (min uy ly), (max uy ly)]
     [llx, uux, lly, uuy] = [ (min (c*lbx) (c*ubx))
                            , (max (c*lbx) (c*ubx))
@@ -38,8 +38,8 @@ createBoundsF gen minB maxB = ((Param a b c d), (Bounds lbx ubx lby uby lbg ubg)
                            ,(max (d*lby) (d*uby))
                            ]
     gen2 = mkStdGen (fromInteger gen' :: Int)
-    [x,y] = take 2 $ randomRs (llx+lly,uux+uuy) gen2 :: [Float]
-    [lbg,ubg] = [min x y, max x y]
+    [lg] = take 1 $ randomRs (llx+lly,uux+uuy) gen2 :: [Float]
+    [lbg,ubg] = [min lg ug, max lg ug]
 
 
 genGBoundsF :: [Float] -> Float -> Float -> Float -> Float -> (Float,Float)
