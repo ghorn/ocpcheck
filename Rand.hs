@@ -25,21 +25,22 @@ createParameters feasible gen minB maxB =
 
 -- Case Feasible problem
 createBoundsF :: Int -> Integer -> Integer -> (Param, Bounds)
-createBoundsF gen minB maxB = ((Param a b c d), (Bounds lbx ubx lby uby lbg ubg))
+createBoundsF gen minB maxB = ((Param aa bb cc dd), (Bounds lbx ubx lby uby lbg ubg))
   where
     [ma,mb,mc,md,mlx,mux,mly,muy,mug,gen'] = take 10 $ randomRs (minB,maxB) (mkStdGen gen) :: [Integer]
-    [a,b,c,d,lx,ux,ly,uy,ug] = zipWith (\x y -> x*y)
+    [aa,bb,cc,dd,lx,ux,ly,uy,ug] = zipWith (\x y -> x*y)
                             (map fromInteger [ma,mb,mc,md,mlx,mux,mly,muy,mug])
                             (take 9 $ randoms (mkStdGen gen) :: [Float])
     [lbx,ubx,lby,uby] = [(min ux lx), (max ux lx), (min uy ly), (max uy ly)]
-    [llx, uux, lly, uuy] = [ (min (c*lbx) (c*ubx))
-                           , (max (c*lbx) (c*ubx))
-                           , (min (d*lby) (d*uby))
-                           ,(max (d*lby) (d*uby))
+    [llx, uux, lly, uuy] = [ (min (cc*lbx) (cc*ubx))
+                           , (max (cc*lbx) (cc*ubx))
+                           , (min (dd*lby) (dd*uby))
+                           , (max (dd*lby) (dd*uby))
                            ]
     gen2 = mkStdGen (fromInteger gen' :: Int)
     [lg] = take 1 $ randomRs (llx+lly,uux+uuy) gen2 :: [Float]
     [lbg,ubg] = [min lg ug, max lg ug]
+
 
 
 genGBoundsF :: [Float] -> Float -> Float -> Float -> Float -> (Float,Float)
@@ -60,23 +61,24 @@ isPossible llx uux lly uuy lg = (lg > llx + lly) && (lg < uux + uuy)
 createBoundsU :: Int -> Integer -> Integer -> (Param, Bounds)
 createBoundsU gen minB maxB =
   if not $ testBounds lg ug lx ux ly uy
-  then ((Param a b c d), (Bounds lx ux ly uy lg ug))
+  then ((Param aa bb cc dd), (Bounds lx ux ly uy lg ug))
   else if (uux+uuy < lg) || (llx +lly > ug)
-       then ((Param a b c d), (Bounds lx ux ly uy lg ug))
-       else  ((Param a b c d), (Bounds lx ux ly uy lbg ubg))
+       then ((Param aa bb cc dd), (Bounds lx ux ly uy lg ug))
+       else ((Param aa bb cc dd), (Bounds lx ux ly uy lbg ubg))
   where
-    ([a,b,c,d,ux,lx,uy,ly,ug,lg],rest) =
-      splitAt 10 $ zipWith (*)
+    [aa,bb,cc,dd,ux,lx,uy,ly,ug,lg] =
+      take 10 $ zipWith (*)
       (map fromInteger (randomRs (minB,maxB) (mkStdGen gen) :: [Integer]))
       (randoms (mkStdGen gen) :: [Float])
 
-    [llx, uux, lly, uuy] = [ (min (c*lx) (c*ux))
-                           , (max (c*lx) (c*ux))
-                           , (min (d*ly) (d*uy))
-                           , (max (d*ly) (d*uy))
+    [llx, uux, lly, uuy] = [ (min (cc*lx) (cc*ux))
+                           , (max (cc*lx) (cc*ux))
+                           , (min (dd*ly) (dd*uy))
+                           , (max (dd*ly) (dd*uy))
                            ]
-    (lbg,ubg) = genGBoundsU2 rest llx uux lly uuy
-
+    (lbg,ubg) = genGBoundsU2 (llx+lly) (uux+uuy) minB maxB
+    
+    
 testBounds :: Float -> Float -> Float -> Float -> Float -> Float -> Bool -- Step 1
 testBounds lbg ubg lbx1 ubx1 lbx2 ubx2
   | lbg > ubg = False
