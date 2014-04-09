@@ -38,9 +38,8 @@ createBoundsF gen minB maxB = ((Param a b c d), (Bounds lbx ubx lby uby lbg ubg)
                            ,(max (d*lby) (d*uby))
                            ]
     gen2 = mkStdGen (fromInteger gen' :: Int)
-    randlist = zipWith (*) (map fromInteger (randomRs (minB,maxB) gen2 :: [Integer]))
-               (randoms gen2 :: [Float])
-    (lbg,ubg) = genGBoundsF randlist llx uux lly uuy
+    [x,y] = take 2 $ randomRs (llx+lly,uux+uuy) gen2 :: [Float]
+    [lbg,ubg] = [min x y, max x y]
 
 
 genGBoundsF :: [Float] -> Float -> Float -> Float -> Float -> (Float,Float)
@@ -76,7 +75,7 @@ createBoundsU gen minB maxB =
                            , (min (d*ly) (d*uy))
                            , (max (d*ly) (d*uy))
                            ]
-    (lbg,ubg) = genGBoundsU rest llx uux lly uuy
+    (lbg,ubg) = genGBoundsU2 rest llx uux lly uuy
 
 testBounds :: Float -> Float -> Float -> Float -> Float -> Float -> Bool -- Step 1
 testBounds lbg ubg lbx1 ubx1 lbx2 ubx2
@@ -85,16 +84,14 @@ testBounds lbg ubg lbx1 ubx1 lbx2 ubx2
   | lbx2 > ubx2 = False
   | otherwise = True
 
-genGBoundsU :: [Float] -> Float -> Float -> Float -> Float -> (Float,Float)
-genGBoundsU rlist llx uux lly uuy =
-  if lg > ug
-  then (lg,ug) -- Step 1
-  else if isNotPossible llx uux lly uuy lg ug
-       then (lg,ug)
-       else genGBoundsF rest llx uux lly uuy
+genGBoundsU2 :: Float -> Float -> Integer-> Integer-> (Float, Float)
+genGBoundsU2 llg uug minB maxB = 
+  if up
+  then (lbg1,ubg1)
+  else (lbg2,ubg2)
   where
-    ([lg,ug], rest) = splitAt 2 rlist
-
-
-isNotPossible :: Float -> Float -> Float -> Float -> Float -> Float -> Bool -- Step 2
-isNotPossible llx uux lly uuy lg ug = (ug < llx + lly) || (lg > uux + uuy)
+    [up] = take 1 $ randoms (mkStdGen (truncate llg :: Int)) :: [Bool]
+    [up1,up2] = take 2 $ randomRs (uug,uug+abs (fromInteger maxB :: Float)) (mkStdGen (truncate llg :: Int)) :: [Float]
+    [down1,down2] = take 2 $ randomRs (llg- abs (fromInteger minB :: Float),llg) (mkStdGen (truncate llg :: Int)) :: [Float]
+    (lbg1,ubg1) = (min up1 up2, max up1 up2)
+    (lbg2,ubg2) = (min down1 down2, max down1 down2) 
