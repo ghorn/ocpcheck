@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wall #-}
 module RandGLPK
 ( Bounds, Param,
  a, b, c, d,

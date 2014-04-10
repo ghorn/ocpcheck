@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wall #-}
 import qualified Numeric.LinearProgramming as GLPK
 import System.IO
 import System.Directory
