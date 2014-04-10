@@ -4,8 +4,8 @@ module RandGLPK
  a, b, c, d,
  getlbx1, getubx1, getlbx2, getubx2,getlbg, getubg, 
  createParameters, 
- createBoundsF, genGBoundsF,isPossible,
- createBoundsU, testBounds, genGBoundsU,genGBoundsU2, isNotPossible
+ createBoundsF,
+ createBoundsU, testBounds, genGBoundsU2,
  ) where
 
 import System.Random
