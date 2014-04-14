@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wall #-}
+
 module HigherDim
 ( ParamOpt, ParamCst, BoundsSpace, BoundsCst
 , generateProblem
