@@ -21,7 +21,7 @@ printTxt p n m = do
                 ++ "import Dyno.Vectorize\nimport Dyno.Nlp\nimport Dyno.NlpSolver\nimport Dyno.Ipopt\nimport Dyno.Casadi.SXElement\n\n"
     textType = if p == "QP"
                then "import qualified QPGenerate as R\nimport System.Random\n\n"
-               else "import qualified FromSolution as R\nimport System.Random\n\n"
+               else "import qualified LPGenerate as R\nimport System.Random\n\n"
     textData = "data X a = X " ++ intercalate " " (replicate n "a") ++ " deriving (Functor, Generic1, Show)\n"
                ++ "data G a = G " ++ intercalate " " (replicate m "a") ++ " deriving (Functor, Generic1, Show)\n\n"
                ++ "instance Vectorize X\ninstance Vectorize G\n\n"
