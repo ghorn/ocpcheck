@@ -5,7 +5,7 @@ import System.IO
 import System.Directory
 import Data.List
 import System.Random
-import qualified HigherDim as R
+import qualified LPGenerate as R
 
 main = do
   gen <- getStdGen
