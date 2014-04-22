@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 
-module HigherDim
+module LPGenerate
 ( ParamOpt, ParamCst, BoundsSpace, BoundsCst
 , generateProblem
 , generateProblemSF
