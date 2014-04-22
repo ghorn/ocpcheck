@@ -1,23 +1,29 @@
 ocpcheck
 ========
-The code Generate.hs is a code that generates a certain number of times problems with 2 variables. 
-The number is given by the user after request (must be a number, haven't considered exceptions yet)
+
+Ocpcheck goal is to generate feasible or unfeasible problems of a certain type in order to check solvers.
 
 The problem is :
-          max a x + b y
-s.t. lbg <= c x + d y <= ubg
+
+          max C x
+
+s.t. lbg <= A x <= ubg
+
 s.t.    lbx <= x <= ubx
+
 s.t.    lby <= y <= uby
 
-Then the machine automatically generates a random boolean and then uses the functions in RandGLPK.hs to generate the parameters and boundaries of the problem.
-Then we create the problem and the constraints of a hmatrix-glpk problem-solver with those parameters and bounds.
+---
+The files RandGLPK, Rand and Generate focuses on problems with only one constraint and a two-dimension space. Generate.hs uses the hmatrix-glpk solver to test RandGLPK.
 
-The machine then shows if the parameters were supposed to create a fesaible problem (True) or not (False)
-alongside with the result of the solver (NoFeasible, UnFeasible, Optimal {..} )
-I.e :
-False      ->       UnFeasible
+The file LPGenerate focuses on LP problems of any dimensions (space and constraints). The file QPGenerate does the same but for an objective function of the following kind : xQx + Cx
+
+The file CreateText generates a *.hs file which can then be used to test Greg Horn's NLP sover from dynobud.
+the file TestHigherDim tests LPGenerate with the hmatrix-glpk solver.
 
 ---
+
+This is how I proceeded for the beginning:
 The module RandGLPK defines new types : 
   Param : the parameters a, b, c, d
   Bounds : the bounds for the constraints lbx,ubx,lby,uby,lbg,ubg
