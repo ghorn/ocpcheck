@@ -22,10 +22,12 @@ import Dyno.Nats
 
 import PureOcp ( ItsAnOcp(..), Ocp(..) , FeasibleOcp(..), runGenWithSeed )
 
+data Bcs a = Bcs (X a) (X a) deriving (Functor, Generic1, Show)
 data X a = X a a a deriving (Functor, Generic1, Show)
 data U a = U a a deriving (Functor, Generic1, Show)
 instance Vectorize X
 instance Vectorize U
+instance Vectorize Bcs
 
 mayer :: Floating a => a -> X a -> X a -> J (Cov JNone) SX -> J (Cov JNone) SX -> a
 mayer _ _ _ _ _ = 0
@@ -43,19 +45,19 @@ myDae myOcp (X x' y' z') (X x y z) _ (U u v) _ _ = (force, None)
               (y' - q21*x - q22*y - q23*z - c21*u - c22*v)
               (z' - q31*x - q32*y - q33*z - c31*u - c32*v)
 
-bc :: Floating a => Ocp D3 D2 -> X a -> X a -> X a
-bc myOcp (X x0 y0 z0) (X xF yF zF) = X (limits x0 xF x0' xF') (limits y0 yF y0' yF') (limits z0 zF z0' zF')
+bc :: Floating a => Ocp D3 D2 -> X a -> X a -> Bcs a
+bc myOcp (X x0 y0 z0) (X xF yF zF) = Bcs
+                                     (X (x0-x00) (y0-x01) (z0-x02))
+                                     (X (xF-xf0) (yF-xf1) (zF-xf2))
   where
-    [x0',y0',z0'] = map realToFrac $ xInit myOcp
-    [xF',yF',zF'] = map realToFrac $ xFinal myOcp
-    limits :: Floating a => a -> a -> a -> a -> a
-    limits x y x' y' = abs (x-x') + abs (y-y')
+    [x00,x01,x02] = map realToFrac $ xInit myOcp
+    [xf0,xf1,xf2] = map realToFrac $ xFinal myOcp
 
 pathc :: x a -> z a -> u a -> p a -> None a -> a -> None a
 pathc _ _ _ _ _ _ = None
 
 
-toOcpPhase :: ItsAnOcp a D3 D2 => a -> OcpPhase X None U None X None X None JNone JNone JNone
+toOcpPhase :: ItsAnOcp a D3 D2 => a -> OcpPhase X None U None X None Bcs None JNone JNone JNone
 toOcpPhase myOcp' =
   OcpPhase { ocpMayer = mayer
            , ocpLagrange = lagrange
@@ -81,6 +83,9 @@ toOcpPhase myOcp' =
     myOcp :: Ocp D3 D2
     myOcp = getOcp myOcp'
 
+mySolver :: NlpSolverStuff IpoptSolver
+mySolver = ipoptSolver { options = [("max_iter", Opt (100 :: Int))] }
+
 main :: IO()
 main = do
   putStrLn "What seed ?"
@@ -93,7 +98,7 @@ main = do
       --cb' traj = cb (ctToDynamic traj, toMeta traj)
   nlp <- makeCollNlp $ toOcpPhase myocp
 
-  (msg,opt') <- solveNlp' ipoptSolver (nlp { nlpX0' = guess }) Nothing
+  (msg,opt') <- solveNlp' mySolver (nlp { nlpX0' = guess }) Nothing
   print myocp
   _ <- case msg of Left msg' -> error msg'
                    Right _ -> return opt'
