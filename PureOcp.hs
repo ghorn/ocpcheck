@@ -134,4 +134,4 @@ bestProbability :: (Dim n, Dim m) => Proxy n -> Proxy m -> Double
 bestProbability pn pm = bestProbability' (reflectDim pn) (reflectDim pm)
 
 runGenWithSeed :: Int -> Gen a -> a
-runGenWithSeed k gen = unGen gen (mkQCGen 0) k
+runGenWithSeed k gen = (unGen gen) (mkQCGen k) k
