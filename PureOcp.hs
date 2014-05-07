@@ -13,7 +13,6 @@ import qualified Data.Foldable as F
 import Linear.V ( Dim(..), reifyDim )
 import Data.Proxy ( Proxy(..) )
 import Test.QuickCheck.Arbitrary ( Arbitrary(..) )
-import Test.QuickCheck.Modifiers ( NonZero(..) )
 import Test.QuickCheck.Gen ( Gen(..), choose, vectorOf )
 import Test.QuickCheck.Random
 import Data.Packed.Matrix
@@ -25,6 +24,8 @@ import Dyno.TypeVecs hiding ( reifyDim )
 
 --import Dyno.Nats
 
+reasonableLimit :: (Double, Double)
+reasonableLimit = (-1e6, 1e6)
 
 -- real OCP dx/dt = A x + B u
 data Ocp n m = Ocp { a :: Vec n (Vec n Double) -- A
@@ -60,7 +61,7 @@ createOcpWithProb prob = do
       x0 = replicate n 0
   as <- genVecs (sparseDouble prob)
   bs <- genVecs (sparseDouble prob)
-  xF <- vectorOf n (arbitrary :: Gen Double)
+  xF <- vectorOf n (choose reasonableLimit)
   return $ Ocp as bs (mkVec' x0) (mkVec' xF)
 
 instance (Dim n, Dim m) => Arbitrary (FeasibleOcp n m) where
@@ -96,12 +97,17 @@ createBAB nn mata matb = matAB
     matAAB = createBAB (nn-1) mata (mata <> matb)
     matAB = fromLists $ zipWith (++) (toLists matb) (toLists matAAB)
 
+
 -- create a double which is non-zero with some given probability
 sparseDouble :: Double -> Gen Double
 sparseDouble prob = do
   testProb <- choose (0,1) :: Gen Double
   if testProb <= prob
-    then fmap getNonZero arbitrary
+    then do
+      nz <- choose reasonableLimit :: Gen Double
+      if abs nz >= 1e-12
+        then return nz
+        else sparseDouble prob
     else return 0
 
 getProb'' :: forall n m . (Dim n, Dim m) => Double -> Int -> Proxy n -> Proxy m -> Gen Double
