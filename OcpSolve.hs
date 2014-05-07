@@ -4,17 +4,19 @@
 {-# Language DeriveGeneric #-}
 {-# Language FlexibleContexts #-}
 
-module OcpSolve ( main ) where
+module Main ( main ) where
 
+import Test.Framework.Providers.QuickCheck2 ( testProperty )
+import Test.Framework ( Test, defaultMain, testGroup )
+import Test.QuickCheck.Monadic
+import Test.QuickCheck.Property
 import Data.Vector ( Vector )
-import Test.QuickCheck.Arbitrary ( Arbitrary(..) )
 import qualified Data.Foldable as F
 import Linear
 
 import Dyno.Vectorize
 import Dyno.View
 import Dyno.Ipopt
---import Dyno.Casadi.SXElement
 import Dyno.Nlp
 import Dyno.NlpSolver
 import Dyno.Ocp
@@ -23,7 +25,11 @@ import Dyno.Cov
 import Dyno.Nats
 import Dyno.TypeVecs
 
-import PureOcp ( ItsAnOcp(..), Ocp(..) , FeasibleOcp(..), runGenWithSeed )
+import LinearOcp ( IsLinearOcp(..), LinearOcp(..)
+                 , FeasibleLinearOcp(..)
+                 --, InfeasibleLinearOcp(..)
+                 --, runGenWithSeed
+                 )
 
 data Bcs n a = Bcs (Vec n a) (Vec n a) deriving (Functor, Generic1, Show)
 data X n a = X (Vec n a) deriving (Functor, Generic1, Show)
@@ -40,34 +46,31 @@ lagrange :: Floating a => X n a -> None a -> U m a -> None a -> None a -> a -> a
 lagrange _ _ (U vec) _ _ _ = F.sum $ fmap (\x -> x*x) vec
 
 myDae :: forall n m a . (Dim n, Dim m, Floating a)
-         => Ocp n m -> Dae (X n) None (U m) None (X n) None a
+         => LinearOcp n m -> Dae (X n) None (U m) None (X n) None a
 myDae myOcp (X x') (X x) _ (U u) _ _ = (X (x' ^-^ force), None)
   where
     a' :: Vec n (Vec n a)
-    a' = fmap (fmap realToFrac) (a myOcp)
+    a' = fmap (fmap realToFrac) (loA myOcp)
 
     b' :: Vec n (Vec m a)
-    b' = fmap (fmap realToFrac) (b myOcp)
+    b' = fmap (fmap realToFrac) (loB myOcp)
 
     force :: Vec n a
     force = (a' !* x)  ^+^  (b' !* u)
 
-bc :: forall n m a . (Dim n, Floating a) => Ocp n m -> X n a -> X n a -> Bcs n a
+bc :: forall n m a . (Dim n, Floating a) => LinearOcp n m -> X n a -> X n a -> Bcs n a
 bc myOcp (X x0) (X xF) = Bcs
                          (x0 ^-^ x0')
                          (xF ^-^ xF')
   where
     x0',xF' :: Vec n a
-    x0' = fmap realToFrac $ xInit myOcp
-    xF' = fmap realToFrac $ xFinal myOcp
+    x0' = fmap realToFrac $ loX0 myOcp
+    xF' = fmap realToFrac $ loXF myOcp
 
 pathc :: x a -> z a -> u a -> p a -> None a -> a -> None a
 pathc _ _ _ _ _ _ = None
 
-anOcp :: FeasibleOcp D3 D2
-anOcp = runGenWithSeed 42 arbitrary
-
-toOcpPhase :: (Dim n, Dim m, ItsAnOcp a n m)
+toOcpPhase :: (Dim n, Dim m, IsLinearOcp a n m)
               => a -> OcpPhase (X n) None (U m) None (X n) None (Bcs n) None JNone JNone JNone
 toOcpPhase myOcp' =
   OcpPhase { ocpMayer = mayer
@@ -91,28 +94,52 @@ toOcpPhase myOcp' =
            , ocpShBnds = cat JNone
            }
   where
-    myOcp = getOcp myOcp'
+    myOcp = getLinearOcp myOcp'
 
-mySolver :: NlpSolverStuff IpoptSolver
-mySolver = ipoptSolver { options = [("max_iter", Opt (100 :: Int))] }
 
-type DimN = D3
-type DimM = D2
+solveLinearOcp :: forall n m a nlp . (IsLinearOcp a n m, Dim n, Dim m, NLPSolverClass nlp)
+                  => NlpSolverStuff nlp -> a -> IO (Either String String)
+solveLinearOcp solver ocp = do
+  let guess = jfill 0 :: J (CollTraj (X n) None (U m) None JNone D10 D2) (Vector Double)
+  nlp <- makeCollNlp (toOcpPhase (getLinearOcp ocp))
+  fmap fst $ solveNlp' solver (nlp { nlpX0' = guess }) Nothing
 
-main :: IO()
-main = do
-  putStrLn "What seed ?"
-  seed <- getLine
-  let s = read seed
-      myocp = runGenWithSeed s arbitrary :: FeasibleOcp DimN DimM
-      --ocptest = Ocp [1,1,1,0,1,0,0,0,1] [1,0,2,3,-1,-1] [0,0,0] [1,2,1]
-      guess = jfill 0 :: J (CollTraj (X DimN) None (U DimM) None JNone D100 D3) (Vector Double)
-      --cb' :: J (CollTraj X None U None JNone D100 D2) (Vector Double) -> IO Bool
-      --cb' traj = cb (ctToDynamic traj, toMeta traj)
-  nlp <- makeCollNlp $ toOcpPhase myocp
+quietIpoptSolver :: NlpSolverStuff IpoptSolver
+quietIpoptSolver = ipoptSolver { options = [ ("max_iter", Opt (100 :: Int))
+                                           , ("print_time", Opt False)
+--                                           , ("print_level", Opt (0 :: Int))
+                                           ] }
 
-  (msg,opt') <- solveNlp' mySolver (nlp { nlpX0' = guess }) Nothing
-  print myocp
-  _ <- case msg of Left msg' -> error msg'
-                   Right _ -> return opt'
-  return ()
+feasibleOcpIsFeasible :: (Dim n, Dim m, NLPSolverClass nlp)
+                         => NlpSolverStuff nlp -> FeasibleLinearOcp n m -> Property
+feasibleOcpIsFeasible solver (FeasibleLinearOcp ocp) = monadicIO $ do
+  ret <- run $ solveLinearOcp solver ocp
+  case ret of
+    Right msg -> stop (succeeded {reason = msg})
+    Left msg -> stop (failed {reason = msg})
+
+--infeasibleOcpIsInfeasible :: (Dim n, Dim m, NLPSolverClass nlp)
+--                             => NlpSolverStuff nlp -> InfeasibleLinearOcp n m -> Property
+--infeasibleOcpIsInfeasible solver (InfeasibleLinearOcp ocp) = monadicIO $ do
+--  ret <- run $ solveLinearOcp solver ocp
+--  case ret of
+--    Right msg -> stop (failed {reason = msg})
+--    Left msg -> stop (succeeded {reason = msg})
+
+
+-- a group of tests
+allTests :: forall n m . (Dim n, Dim m) => Proxy n -> Proxy m -> [Test]
+allTests _ _ =
+  [ testGroup "linear ocp tests"
+    [ testProperty "feasible is solvable"
+      (feasibleOcpIsFeasible quietIpoptSolver :: FeasibleLinearOcp n m -> Property)
+--    , testProperty "infeasible is not solvable"
+--      (infeasibleOcpIsInfeasible quietIpoptSolver :: InfeasibleLinearOcp n m -> Property)
+    ]
+  ]
+
+-- this uses test-framework to run all the tests
+main :: IO ()
+main = defaultMain $ allTests
+       (Proxy :: Proxy D6)
+       (Proxy :: Proxy D5)
