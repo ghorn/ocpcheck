@@ -6,6 +6,7 @@
 module OcpSolve ( main ) where
 
 import Data.Vector ( Vector )
+import Test.QuickCheck.Arbitrary ( Arbitrary(..) )
 
 import Dyno.Vectorize
 import Dyno.View
@@ -19,7 +20,7 @@ import Dyno.Cov
 --import Dyno.DirectCollocation.Dynamic ( toMeta, ctToDynamic )
 import Dyno.Nats
 
-import PureOcp ( ItsAnOcp(..), Ocp(..) , FeasibleOcp(..), createFeas'' )
+import PureOcp ( ItsAnOcp(..), Ocp(..) , FeasibleOcp(..), runGenWithSeed )
 
 data X a = X a a a deriving (Functor, Generic1, Show)
 data U a = U a a deriving (Functor, Generic1, Show)
@@ -85,7 +86,7 @@ main = do
   putStrLn "What seed ?"
   seed <- getLine
   let s = read seed
-      myocp = createFeas'' s :: FeasibleOcp D3 D2
+      myocp = runGenWithSeed s arbitrary :: FeasibleOcp D3 D2
       --ocptest = Ocp [1,1,1,0,1,0,0,0,1] [1,0,2,3,-1,-1] [0,0,0] [1,2,1]
       guess = jfill 0 :: J (CollTraj X None U None JNone D100 D3) (Vector Double)
       --cb' :: J (CollTraj X None U None JNone D100 D2) (Vector Double) -> IO Bool

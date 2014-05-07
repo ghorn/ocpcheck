@@ -5,88 +5,23 @@
 
 module PureOcp ( Ocp(..), FeasibleOcp(..), InfeasibleOcp(..)
                , ItsAnOcp(..)
-               , bestProbability
-               , createFeas , createFeas''
-               , createInfeas , createInfeas''
+               , runGenWithSeed
                ) where
 
-import Linear.V ( Dim(..) )
+import Control.Monad ( when )
+import Linear.V ( Dim(..), reifyDim )
 import Data.Proxy ( Proxy(..) )
 import Test.QuickCheck.Arbitrary ( Arbitrary(..) )
-import Test.QuickCheck.Modifiers
-import Test.QuickCheck.Gen ( Gen(..), choose )
+import Test.QuickCheck.Modifiers ( NonZero(..) )
+import Test.QuickCheck.Gen ( Gen(..), choose, vectorOf )
 import Test.QuickCheck.Random
-import System.Random
 import Data.Packed.Matrix
 import Data.MemoTrie ( memo2 )
 
 import Numeric.LinearAlgebra
---import Numeric.LinearAlgebra.Algorithms ( rank )
 
 --import Dyno.Nats
 
-createBAB' :: Int -> Matrix Double -> Matrix Double -> Matrix Double
-createBAB' 1  _ matb = matb
-createBAB' nn mata matb = matAB
-  where
-    matAAB = createBAB' (nn-1) mata (mata <> matb)
-    matAB = fromLists $ zipWith (++) (toLists matb) (toLists matAAB)
-
-createSparse :: Double -> [Double]
-createSparse = createSparse' 0
-
-createSparse' :: Int -> Double -> [Double]
-createSparse' s p = sparse
-  where
-    probs = pureRandoms'' s $ choose (0,1)
-    mat = map getNonZero $ pureRandoms'' s $ (arbitrary :: Gen (NonZero Double))
-    sparse = zipWith (\pp alp -> if pp < p then alp else 0) probs mat
-
-getProb :: Int -> Int -> Double
-getProb n m = testProb n m 0
-  where
-    testProb :: Int -> Int -> Double -> Double
-    testProb n1 m1 p 
-      | p == 1 = p
-      | countF < countI = testProb n1 m1 (p+0.01)
-      | otherwise = p
-      where
-        (countF, countI) = manyTries n m 1000 sparse 
-        sparse = createSparse p
-
-    manyTries :: Int -> Int -> Int -> [Double] -> (Double, Double)
-    manyTries _ _ 0 _ = (0,0)
-    manyTries n2 m2 nb sparse
-      | rank (createBAB' n2 ((n2><n2) ma) ((n2><m2) mb)) == n2 = (tempF+1, tempI)
-      | otherwise = (tempF, tempI+1)
-      where
-        (tempF, tempI) = manyTries n2 m2 (nb-1) rest
-        (ma,ra) = splitAt (n2*n2) $ sparse
-        (mb, rest) = splitAt (n2*m2) ra
-        
-
-bestProbability :: Int -> Int -> Double
-bestProbability = memo2 getProb 
-
-test :: [(Double,Double,Double)]
-test = [(n,m,p) | (n,m,p) <- zipWith (\(x,y) z -> (x,y,z)) [(x,y) | x <- [1..4], y<-[1..4]] (map (\(x,y) -> bestProbability x y) [(x,y) | x <- [1..4], y<-[1..4]]) ]
-
-pureRandoms :: Gen a -> [a]
-pureRandoms = pureRandoms' (mkQCGen 0) 2
-  where
-    pureRandoms' :: QCGen -> Int -> Gen a -> [a]
-    pureRandoms' qcgen0 seed gen = unGen gen qcgen0 seed : pureRandoms' qcgen1 seed gen
-      where
-        qcgen1 = snd $ next qcgen0
-
--- Choose the seed you use
-pureRandoms'' :: Int -> Gen a -> [a]
-pureRandoms'' s = pureRandoms' (mkQCGen 0) s
-  where
-    pureRandoms' :: QCGen -> Int -> Gen a -> [a]
-    pureRandoms' qcgen0 seed gen = unGen gen qcgen0 seed : pureRandoms' qcgen1 seed gen
-      where
-        qcgen1 = snd $ next qcgen0
 
 -- real OCP dx/dt = a x + b u
 data Ocp n m = Ocp { a :: [Double]      -- force 
@@ -106,48 +41,79 @@ instance ItsAnOcp (FeasibleOcp n m) n m where
 instance ItsAnOcp (InfeasibleOcp n m) n m where
   getOcp (InfeasibleOcp ocp) = ocp
 
-createFeas :: forall n m . (Dim n, Dim m) => FeasibleOcp n m
-createFeas = createFeas'' 0
+createOcpWithProb :: forall n m . (Dim n, Dim m) => Double -> Gen (Ocp n m)
+createOcpWithProb prob = do
+  let n = reflectDim (Proxy :: Proxy n)
+      m = reflectDim (Proxy :: Proxy m)
+      x0 = replicate n 0
+  as <- vectorOf (n*n) (sparseDouble prob)
+  bs <- vectorOf (n*m) (sparseDouble prob)
+  xF <- vectorOf n (arbitrary :: Gen Double)
+  return $ Ocp as bs x0 xF
 
-createFeas'' :: forall n m . (Dim n, Dim m) => Int -> FeasibleOcp n m
-createFeas'' s = focp 
+instance (Dim n, Dim m) => Arbitrary (FeasibleOcp n m) where
+  arbitrary = do
+    let prob = bestProbability (Proxy :: Proxy n) (Proxy :: Proxy m)
+    ocp <- createOcpWithProb prob
+    if controllable ocp
+      then return (FeasibleOcp ocp)
+      else arbitrary
+
+instance (Dim n, Dim m) => Arbitrary (InfeasibleOcp n m) where
+  arbitrary = do
+    let prob = bestProbability (Proxy :: Proxy n) (Proxy :: Proxy m)
+    ocp <- createOcpWithProb prob
+    if controllable ocp
+      then arbitrary
+      else return (InfeasibleOcp ocp)
+
+
+controllable :: forall n m . (Dim n, Dim m) => Ocp n m -> Bool
+controllable ocp = rank bab == n
   where
+    ma = a ocp
+    mb = b ocp
     n = reflectDim (Proxy :: Proxy n)
     m = reflectDim (Proxy :: Proxy m)
-    p = bestProbability n m
-    sparse = createSparse' s p
-    x = replicate n 0
-    xF = take n $ pureRandoms'' s (arbitrary :: Gen Double)
-    (ma',mb') = createFeas' sparse
-    focp = FeasibleOcp (Ocp ma' mb' x xF)
+    bab = createBAB n ((n><n) ma) ((n><m) mb)
 
-    createFeas' :: [Double] -> ([Double], [Double])
-    createFeas' sp 
-      | rank (createBAB' n ((n><n) ma) ((n><m) mb)) == n = (ma,mb)
-      | otherwise = createFeas' inCase
-        where
-          (ma, rest)  = splitAt  (n*n) sp
-          (mb, inCase) = splitAt (n*m) rest
-
-createInfeas :: forall n m . (Dim n, Dim m) => InfeasibleOcp n m
-createInfeas = createInfeas'' 0
-
-createInfeas'' :: forall n m . (Dim n, Dim m) => Int -> InfeasibleOcp n m
-createInfeas'' s = iocp 
+createBAB :: Int -> Matrix Double -> Matrix Double -> Matrix Double
+createBAB 1  _ matb = matb
+createBAB nn mata matb = matAB
   where
-    n = reflectDim (Proxy :: Proxy n)
-    m = reflectDim (Proxy :: Proxy m)
-    p = bestProbability n m
-    sparse = createSparse' s p
-    x = replicate n 0
-    xF = take n $ pureRandoms'' s (arbitrary :: Gen Double)
-    (ma',mb') = createInfeas' sparse
-    iocp = InfeasibleOcp (Ocp ma' mb' x xF)
-      
-    createInfeas' :: [Double] -> ([Double], [Double])
-    createInfeas' sp 
-      | rank (createBAB' n ((n><n) ma) ((n><m) mb)) < n = (ma,mb)
-      | otherwise = createInfeas' inCase
-        where
-          (ma, rest)  = splitAt  (n*n) sp
-          (mb, inCase) = splitAt (n*m) rest
+    matAAB = createBAB (nn-1) mata (mata <> matb)
+    matAB = fromLists $ zipWith (++) (toLists matb) (toLists matAAB)
+
+-- create a double which is non-zero with some given probability
+sparseDouble :: Double -> Gen Double
+sparseDouble prob = do
+  testProb <- choose (0,1) :: Gen Double
+  if testProb <= prob
+    then fmap getNonZero arbitrary
+    else return 0
+
+getProb'' :: forall n m . (Dim n, Dim m) => Double -> Int -> Proxy n -> Proxy m -> Gen Double
+getProb'' prob numRuns pn pm = do
+  when (prob > 1.0) $ error "getProbs': prob > 1.0"
+  ocps <- vectorOf numRuns (createOcpWithProb prob) :: Gen [Ocp n m]
+  let fractionControllable = (fromIntegral (length (filter controllable ocps))) / (fromIntegral numRuns :: Double)
+  if fractionControllable >= 0.5
+    then return prob
+    else getProb'' (prob + 0.01) numRuns pn pm
+
+getProb' :: Int -> Int -> Gen Double
+getProb' n m = reifyDim m $ reifyDim n $ getProb'' 0.0 numRuns
+  where
+    numRuns = 100
+
+getProb :: Int -> Int -> Double
+getProb n m = runGenWithSeed 42 (getProb' n m)
+
+bestProbability' :: Int -> Int -> Double
+bestProbability' = memo2 getProb
+
+bestProbability :: (Dim n, Dim m) => Proxy n -> Proxy m -> Double
+bestProbability pn pm = bestProbability' (reflectDim pn) (reflectDim pm)
+
+runGenWithSeed :: Int -> Gen a -> a
+runGenWithSeed k gen = unGen gen (mkQCGen 0) k
