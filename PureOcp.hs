@@ -9,6 +9,7 @@ module PureOcp ( Ocp(..), FeasibleOcp(..), InfeasibleOcp(..)
                ) where
 
 import Control.Monad ( when )
+import qualified Data.Foldable as F
 import Linear.V ( Dim(..), reifyDim )
 import Data.Proxy ( Proxy(..) )
 import Test.QuickCheck.Arbitrary ( Arbitrary(..) )
@@ -20,14 +21,16 @@ import Data.MemoTrie ( memo2 )
 
 import Numeric.LinearAlgebra
 
+import Dyno.TypeVecs hiding ( reifyDim )
+
 --import Dyno.Nats
 
 
--- real OCP dx/dt = a x + b u
-data Ocp n m = Ocp { a :: [Double]      -- force 
-                   , b :: [Double]      -- force on control
-                   , xInit :: [Double]  -- Starting point
-                   , xFinal :: [Double] -- Ending point
+-- real OCP dx/dt = A x + B u
+data Ocp n m = Ocp { a :: Vec n (Vec n Double) -- A
+                   , b :: Vec n (Vec m Double) -- B
+                   , xInit :: Vec n Double  -- Starting point
+                   , xFinal :: Vec n Double -- Ending point
                    } deriving (Show, Eq)
 data FeasibleOcp n m  = FeasibleOcp (Ocp n m) deriving Show
 data InfeasibleOcp n m  = InfeasibleOcp (Ocp n m) deriving Show
@@ -41,15 +44,24 @@ instance ItsAnOcp (FeasibleOcp n m) n m where
 instance ItsAnOcp (InfeasibleOcp n m) n m where
   getOcp (InfeasibleOcp ocp) = ocp
 
+genVec :: forall n a . Dim n => Gen a -> Gen (Vec n a)
+genVec gen = do
+  let n = reflectDim (Proxy :: Proxy n)
+  xs <- vectorOf n gen
+  return (mkVec' xs)
+
+genVecs :: forall n m a . (Dim n, Dim m) => Gen a -> Gen (Vec n (Vec m a))
+genVecs gen = genVec (genVec gen)
+
 createOcpWithProb :: forall n m . (Dim n, Dim m) => Double -> Gen (Ocp n m)
 createOcpWithProb prob = do
   let n = reflectDim (Proxy :: Proxy n)
-      m = reflectDim (Proxy :: Proxy m)
+      --m = reflectDim (Proxy :: Proxy m)
       x0 = replicate n 0
-  as <- vectorOf (n*n) (sparseDouble prob)
-  bs <- vectorOf (n*m) (sparseDouble prob)
+  as <- genVecs (sparseDouble prob)
+  bs <- genVecs (sparseDouble prob)
   xF <- vectorOf n (arbitrary :: Gen Double)
-  return $ Ocp as bs x0 xF
+  return $ Ocp as bs (mkVec' x0) (mkVec' xF)
 
 instance (Dim n, Dim m) => Arbitrary (FeasibleOcp n m) where
   arbitrary = do
@@ -71,8 +83,8 @@ instance (Dim n, Dim m) => Arbitrary (InfeasibleOcp n m) where
 controllable :: forall n m . (Dim n, Dim m) => Ocp n m -> Bool
 controllable ocp = rank bab == n
   where
-    ma = a ocp
-    mb = b ocp
+    ma = concat $ fmap F.toList $ F.toList $ a ocp
+    mb = concat $ fmap F.toList $ F.toList $ b ocp
     n = reflectDim (Proxy :: Proxy n)
     m = reflectDim (Proxy :: Proxy m)
     bab = createBAB n ((n><n) ma) ((n><m) mb)

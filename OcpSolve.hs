@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
+{-# Language ScopedTypeVariables #-}
 {-# Language DeriveFunctor #-}
 {-# Language DeriveGeneric #-}
 {-# Language FlexibleContexts #-}
@@ -7,6 +8,8 @@ module OcpSolve ( main ) where
 
 import Data.Vector ( Vector )
 import Test.QuickCheck.Arbitrary ( Arbitrary(..) )
+import qualified Data.Foldable as F
+import Linear
 
 import Dyno.Vectorize
 import Dyno.View
@@ -17,47 +20,55 @@ import Dyno.NlpSolver
 import Dyno.Ocp
 import Dyno.DirectCollocation
 import Dyno.Cov
---import Dyno.DirectCollocation.Dynamic ( toMeta, ctToDynamic )
 import Dyno.Nats
+import Dyno.TypeVecs
 
 import PureOcp ( ItsAnOcp(..), Ocp(..) , FeasibleOcp(..), runGenWithSeed )
 
-data Bcs a = Bcs (X a) (X a) deriving (Functor, Generic1, Show)
-data X a = X a a a deriving (Functor, Generic1, Show)
-data U a = U a a deriving (Functor, Generic1, Show)
-instance Vectorize X
-instance Vectorize U
-instance Vectorize Bcs
+data Bcs n a = Bcs (Vec n a) (Vec n a) deriving (Functor, Generic1, Show)
+data X n a = X (Vec n a) deriving (Functor, Generic1, Show)
+data U m a = U (Vec m a) deriving (Functor, Generic1, Show)
 
-mayer :: Floating a => a -> X a -> X a -> J (Cov JNone) SX -> J (Cov JNone) SX -> a
+instance Dim n => Vectorize (X n)
+instance Dim m => Vectorize (U m)
+instance Dim n => Vectorize (Bcs n)
+
+mayer :: Floating a => a -> x -> x -> J (Cov JNone) SX -> J (Cov JNone) SX -> a
 mayer _ _ _ _ _ = 0
 
-lagrange :: Floating a => X a -> None a -> U a -> None a -> None a -> a -> a
---lagrange (X x y z) _ (U u v) _ _ _ = u*u + v*v -- + x**2 + y**2 + z**2
-lagrange _ _ (U u v) _ _ _ = u*u + v*v
+lagrange :: Floating a => X n a -> None a -> U m a -> None a -> None a -> a -> a
+lagrange _ _ (U vec) _ _ _ = F.sum $ fmap (\x -> x*x) vec
 
-myDae :: Floating a => Ocp D3 D2 -> Dae X None U None X None a
-myDae myOcp (X x' y' z') (X x y z) _ (U u v) _ _ = (force, None)
+myDae :: forall n m a . (Dim n, Dim m, Floating a)
+         => Ocp n m -> Dae (X n) None (U m) None (X n) None a
+myDae myOcp (X x') (X x) _ (U u) _ _ = (X (x' ^-^ force), None)
   where
-    [q11,q12,q13,q21,q22,q23,q31,q32,q33] = map realToFrac (a myOcp)
-    [c11,c12,c21,c22,c31,c32] = map realToFrac (b myOcp)
-    force = X (x' - q11*x - q12*y - q13*z - c11*u - c12*v)
-              (y' - q21*x - q22*y - q23*z - c21*u - c22*v)
-              (z' - q31*x - q32*y - q33*z - c31*u - c32*v)
+    a' :: Vec n (Vec n a)
+    a' = fmap (fmap realToFrac) (a myOcp)
 
-bc :: Floating a => Ocp D3 D2 -> X a -> X a -> Bcs a
-bc myOcp (X x0 y0 z0) (X xF yF zF) = Bcs
-                                     (X (x0-x00) (y0-x01) (z0-x02))
-                                     (X (xF-xf0) (yF-xf1) (zF-xf2))
+    b' :: Vec n (Vec m a)
+    b' = fmap (fmap realToFrac) (b myOcp)
+
+    force :: Vec n a
+    force = (a' !* x)  ^+^  (b' !* u)
+
+bc :: forall n m a . (Dim n, Floating a) => Ocp n m -> X n a -> X n a -> Bcs n a
+bc myOcp (X x0) (X xF) = Bcs
+                         (x0 ^-^ x0')
+                         (xF ^-^ xF')
   where
-    [x00,x01,x02] = map realToFrac $ xInit myOcp
-    [xf0,xf1,xf2] = map realToFrac $ xFinal myOcp
+    x0',xF' :: Vec n a
+    x0' = fmap realToFrac $ xInit myOcp
+    xF' = fmap realToFrac $ xFinal myOcp
 
 pathc :: x a -> z a -> u a -> p a -> None a -> a -> None a
 pathc _ _ _ _ _ _ = None
 
+anOcp :: FeasibleOcp D3 D2
+anOcp = runGenWithSeed 42 arbitrary
 
-toOcpPhase :: ItsAnOcp a D3 D2 => a -> OcpPhase X None U None X None Bcs None JNone JNone JNone
+toOcpPhase :: (Dim n, Dim m, ItsAnOcp a n m)
+              => a -> OcpPhase (X n) None (U m) None (X n) None (Bcs n) None JNone JNone JNone
 toOcpPhase myOcp' =
   OcpPhase { ocpMayer = mayer
            , ocpLagrange = lagrange
@@ -80,20 +91,22 @@ toOcpPhase myOcp' =
            , ocpShBnds = cat JNone
            }
   where
-    myOcp :: Ocp D3 D2
     myOcp = getOcp myOcp'
 
 mySolver :: NlpSolverStuff IpoptSolver
 mySolver = ipoptSolver { options = [("max_iter", Opt (100 :: Int))] }
+
+type DimN = D3
+type DimM = D2
 
 main :: IO()
 main = do
   putStrLn "What seed ?"
   seed <- getLine
   let s = read seed
-      myocp = runGenWithSeed s arbitrary :: FeasibleOcp D3 D2
+      myocp = runGenWithSeed s arbitrary :: FeasibleOcp DimN DimM
       --ocptest = Ocp [1,1,1,0,1,0,0,0,1] [1,0,2,3,-1,-1] [0,0,0] [1,2,1]
-      guess = jfill 0 :: J (CollTraj X None U None JNone D100 D3) (Vector Double)
+      guess = jfill 0 :: J (CollTraj (X DimN) None (U DimM) None JNone D100 D3) (Vector Double)
       --cb' :: J (CollTraj X None U None JNone D100 D2) (Vector Double) -> IO Bool
       --cb' traj = cb (ctToDynamic traj, toMeta traj)
   nlp <- makeCollNlp $ toOcpPhase myocp
