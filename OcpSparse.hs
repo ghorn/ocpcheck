@@ -86,10 +86,10 @@ quietIpoptSolver =
               }
 
 -- real OCP dx/dt = a x + b u
-data Ocp n m = Ocp { a :: [Double]                   -- force 
-               , b :: [Double]                   -- force on control
-               , x0 :: [Double]                  -- Starting point
-               , xF :: [Double]                  -- Ending point
+data Ocp n m = Ocp { a :: [Double] -- force 
+               , b :: [Double]     -- force on control
+               , x0 :: [Double]    -- Starting point
+               , xF :: [Double]    -- Ending point
                } deriving (Show, Eq)
 data FeasibleOcp n m  = FeasibleOcp (Ocp n m) deriving Show
 data InfeasibleOcp n m  = InfeasibleOcp (Ocp n m) deriving Show
@@ -132,7 +132,7 @@ instance (Dim n, Dim m) => Arbitrary (InfeasibleOcp n m) where
 -- this is like "isSolveable"
 canSolve :: (Dim n, Dim m) => Ocp n m -> IO (Bool)
 canSolve ocp = do
-  (status, _) <- M.solveStaticOcp quietIpoptSolver (ocpToDae ocp) (mayer ocp) (boundaryConditions ocp) (myOcp ocp) tbnds nN deg Nothing
+  status <- M.solveStaticOcp quietIpoptSolver (ocpToDae ocp) (mayer ocp) (boundaryConditions ocp) (myOcp ocp) tbnds nN deg Nothing
   if status == Right "Solve_Succeeded"
   then return True
   else return False
@@ -145,17 +145,6 @@ standAlone :: (Dim n, Dim m) => Ocp n m -> IO()
 standAlone ocp = do
   feas <- M.solveStaticOcp ipoptSolver (ocpToDae ocp) (mayer ocp) (boundaryConditions ocp) (myOcp ocp) tbnds nN deg Nothing
   print feas
-  where
-    nN = 100
-    deg = 3
-    tbnds = (Just 4, Just 4)
-
-canSolve' :: (Dim n, Dim m) => Ocp n m -> IO (Maybe Double)
-canSolve' ocp = do
-  (status, opt) <- M.solveStaticOcp quietIpoptSolver (ocpToDae ocp) (mayer ocp) (boundaryConditions ocp) (myOcp ocp) tbnds nN deg Nothing
-  return $ case status of
-    Right _ -> Just (V.head opt)
-    Left _ -> Nothing
   where
     nN = 100
     deg = 3
@@ -284,11 +273,12 @@ infeasibleOcpIsNotFeasibleIO (InfeasibleOcp ocp) = monadicIO $ do
 
 -- a group of tests
 allTests :: [Test]
-allTests = [ testGroup "io tests" [ testProperty "feas is feas (IO)" (feasibleOcpIsFeasibleIO :: FeasibleOcp D3 D2 -> Property)
-                                  , testProperty "infeas is not feas (IO)" (infeasibleOcpIsNotFeasibleIO :: InfeasibleOcp D3 D2 -> Property)
-                                  ]
+allTests = [ testGroup "io tests"
+             [ testProperty "feas is feas (IO)" (feasibleOcpIsFeasibleIO :: FeasibleOcp D3 D2 -> Property)
+             , testProperty "infeas is not feas (IO)"
+               (infeasibleOcpIsNotFeasibleIO :: InfeasibleOcp D3 D2 -> Property)
+             ]
            ]
-
 
 -- this runs quickcheck manually
 runManually :: IO ()
